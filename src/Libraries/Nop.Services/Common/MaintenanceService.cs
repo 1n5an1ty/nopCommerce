@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nop.Core;
 using Nop.Core.Infrastructure;
-using Nop.Services.Defaults;
 
 namespace Nop.Services.Common
 {
@@ -54,10 +53,8 @@ namespace Nop.Services.Common
         {
             var path = GetBackupDirectoryPath();
 
-            if (!_fileProvider.DirectoryExists(path))
-            {
+            if (!_fileProvider.DirectoryExists(path)) 
                 throw new NopException("Backup directory not exists");
-            }
 
             return _fileProvider.GetFiles(path, $"*.{NopCommonDefaults.DbBackupFileExtension}")
                 .OrderByDescending(p => _fileProvider.GetLastWriteTime(p)).ToList();
@@ -72,8 +69,12 @@ namespace Nop.Services.Common
         {
             return _fileProvider.Combine(GetBackupDirectoryPath(), backupFileName);
         }
-        
-        public virtual string GetNewBackupFilePath()
+
+        /// <summary>
+        /// Creates a path to a new database backup file
+        /// </summary>
+        /// <returns>Path to a new database backup file</returns>
+        public virtual string CreateNewBackupFilePath()
         {
             return _fileProvider.Combine(GetBackupDirectoryPath(), $"database_{DateTime.Now:yyyy-MM-dd-HH-mm-ss}_{CommonHelper.GenerateRandomDigitCode(10)}.{NopCommonDefaults.DbBackupFileExtension}");
         }

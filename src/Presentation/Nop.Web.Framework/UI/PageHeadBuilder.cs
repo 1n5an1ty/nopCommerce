@@ -3,14 +3,17 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Tasks;
 using BundlerMinifier;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Hosting;
 using Nop.Core;
 using Nop.Core.Caching;
+using Nop.Core.Configuration;
 using Nop.Core.Domain.Common;
 using Nop.Core.Domain.Seo;
 using Nop.Core.Infrastructure;
@@ -27,16 +30,17 @@ namespace Nop.Web.Framework.UI
 
         private static readonly object _lock = new object();
 
-        private readonly BundleFileProcessor _processor;
+        private readonly AppSettings _appSettings;
         private readonly CommonSettings _commonSettings;
         private readonly IActionContextAccessor _actionContextAccessor;
-        private readonly IHostingEnvironment _hostingEnvironment;
         private readonly INopFileProvider _fileProvider;
-        private readonly IStaticCacheManager _cacheManager;
+        private readonly IStaticCacheManager _staticCacheManager;
         private readonly IUrlHelperFactory _urlHelperFactory;
         private readonly IUrlRecordService _urlRecordService;
+        private readonly IWebHostEnvironment _webHostEnvironment;
         private readonly SeoSettings _seoSettings;
 
+        private readonly BundleFileProcessor _processor;
         private readonly List<string> _titleParts;
         private readonly List<string> _metaDescriptionParts;
         private readonly List<string> _metaKeywordParts;
@@ -49,34 +53,31 @@ namespace Nop.Web.Framework.UI
         private string _activeAdminMenuSystemName;
         private string _editPageUrl;
 
-        //in minutes
-        private const int RECHECK_BUNDLED_FILES_PERIOD = 120;
-
         #endregion
 
         #region Ctor
-        
-        public PageHeadBuilder(
+
+        public PageHeadBuilder(AppSettings appSettings,
             CommonSettings commonSettings,
             IActionContextAccessor actionContextAccessor,
-            IHostingEnvironment hostingEnvironment,
             INopFileProvider fileProvider,
-            IStaticCacheManager cacheManager,
+            IStaticCacheManager staticCacheManager,
             IUrlHelperFactory urlHelperFactory,
             IUrlRecordService urlRecordService,
-            SeoSettings seoSettings         
-            )
+            IWebHostEnvironment webHostEnvironment,
+            SeoSettings seoSettings)
         {
-            _processor = new BundleFileProcessor();
+            _appSettings = appSettings;
             _commonSettings = commonSettings;
             _actionContextAccessor = actionContextAccessor;
-            _hostingEnvironment = hostingEnvironment;
             _fileProvider = fileProvider;
-            _cacheManager = cacheManager;            
+            _staticCacheManager = staticCacheManager;
             _urlHelperFactory = urlHelperFactory;
             _urlRecordService = urlRecordService;
+            _webHostEnvironment = webHostEnvironment;
             _seoSettings = seoSettings;
 
+            _processor = new BundleFileProcessor();
             _titleParts = new List<string>();
             _metaDescriptionParts = new List<string>();
             _metaKeywordParts = new List<string>();
@@ -118,7 +119,7 @@ namespace Nop.Web.Framework.UI
                 hash = WebEncoders.Base64UrlEncode(input);
             }
             //ensure only valid chars
-            hash = _urlRecordService.GetSeName(hash, _seoSettings.ConvertNonWesternChars, _seoSettings.AllowUnicodeCharsInUrls);
+            hash = _urlRecordService.GetSeNameAsync(hash, _seoSettings.ConvertNonWesternChars, _seoSettings.AllowUnicodeCharsInUrls).Result;
 
             return hash;
         }
@@ -329,7 +330,7 @@ namespace Nop.Web.Framework.UI
 
             var urlHelper = _urlHelperFactory.GetUrlHelper(_actionContextAccessor.ActionContext);
 
-            var debugModel = _hostingEnvironment.IsDevelopment();
+            var debugModel = _webHostEnvironment.IsDevelopment();
 
             if (!bundleFiles.HasValue)
             {
@@ -360,12 +361,12 @@ namespace Nop.Web.Framework.UI
                     foreach (var item in partsToBundle)
                     {
                         new PathString(urlHelper.Content(debugModel ? item.DebugSrc : item.Src))
-                            .StartsWithSegments(urlHelper.ActionContext.HttpContext.Request.PathBase, out PathString path);
+                            .StartsWithSegments(urlHelper.ActionContext.HttpContext.Request.PathBase, out var path);
                         var src = path.Value.TrimStart('/');
 
                         //check whether this file exists, if not it should be stored into /wwwroot directory
                         if (!_fileProvider.FileExists(_fileProvider.MapPath(path)))
-                            src = _fileProvider.Combine(_hostingEnvironment.WebRootPath, _fileProvider.Combine(src.Split("/").ToArray()));
+                            src = _fileProvider.Combine(_webHostEnvironment.WebRootPath, _fileProvider.Combine(src.Split("/").ToArray()));
                         else
                             src = _fileProvider.MapPath(path);
 
@@ -374,7 +375,7 @@ namespace Nop.Web.Framework.UI
 
                     //output file
                     var outputFileName = GetBundleFileName(partsToBundle.Select(x => debugModel ? x.DebugSrc : x.Src).ToArray());
-                    bundle.OutputFileName = _fileProvider.Combine(_hostingEnvironment.WebRootPath, "bundles", outputFileName + ".js");
+                    bundle.OutputFileName = _fileProvider.Combine(_webHostEnvironment.WebRootPath, "bundles", outputFileName + ".js");
                     //save
                     var configFilePath = _fileProvider.MapPath($"/{outputFileName}.json");
                     bundle.FileName = configFilePath;
@@ -382,8 +383,12 @@ namespace Nop.Web.Framework.UI
                     //performance optimization. do not bundle and minify for each HTTP request
                     //we periodically re-check already bundles file
                     //so if we have minification enabled, it could take up to several minutes to see changes in updated resource files (or just reset the cache or restart the site)
-                    var cacheKey = $"Nop.minification.shouldrebuild.js-{outputFileName}";
-                    var shouldRebuild = _cacheManager.Get(cacheKey, () => true, RECHECK_BUNDLED_FILES_PERIOD);
+                    var cacheKey = new CacheKey($"Nop.minification.shouldrebuild.js-{outputFileName}")
+                    {
+                        CacheTime = _appSettings.CacheConfig.BundledFilesCacheTime
+                    };
+
+                    var shouldRebuild = _staticCacheManager.GetAsync(_staticCacheManager.PrepareKey(cacheKey), () => true).Result;
 
                     if (shouldRebuild)
                     {
@@ -393,10 +398,10 @@ namespace Nop.Web.Framework.UI
                             //BundleHandler.AddBundle(configFilePath, bundle);
 
                             //process
-                            _processor.Process(configFilePath, new List<Bundle> {bundle});
+                            _processor.Process(configFilePath, new List<Bundle> { bundle });
                         }
 
-                        _cacheManager.Set(cacheKey, false, RECHECK_BUNDLED_FILES_PERIOD);
+                        _staticCacheManager.SetAsync(cacheKey, false);
                     }
 
                     //render
@@ -441,6 +446,9 @@ namespace Nop.Web.Framework.UI
             if (string.IsNullOrEmpty(script))
                 return;
 
+            if (_inlineScriptParts[location].Contains(script))
+                return;
+
             _inlineScriptParts[location].Add(script);
         }
         /// <summary>
@@ -454,6 +462,9 @@ namespace Nop.Web.Framework.UI
                 _inlineScriptParts.Add(location, new List<string>());
 
             if (string.IsNullOrEmpty(script))
+                return;
+
+            if (_inlineScriptParts[location].Contains(script))
                 return;
 
             _inlineScriptParts[location].Insert(0, script);
@@ -546,7 +557,7 @@ namespace Nop.Web.Framework.UI
 
             var urlHelper = _urlHelperFactory.GetUrlHelper(_actionContextAccessor.ActionContext);
 
-            var debugModel = _hostingEnvironment.IsDevelopment();
+            var debugModel = _webHostEnvironment.IsDevelopment();
 
             if (!bundleFiles.HasValue)
             {
@@ -582,19 +593,19 @@ namespace Nop.Web.Framework.UI
                     foreach (var item in partsToBundle)
                     {
                         new PathString(urlHelper.Content(debugModel ? item.DebugSrc : item.Src))
-                            .StartsWithSegments(urlHelper.ActionContext.HttpContext.Request.PathBase, out PathString path);
+                            .StartsWithSegments(urlHelper.ActionContext.HttpContext.Request.PathBase, out var path);
                         var src = path.Value.TrimStart('/');
 
                         //check whether this file exists 
                         if (!_fileProvider.FileExists(_fileProvider.MapPath(path)))
-                            src = _fileProvider.Combine(_hostingEnvironment.WebRootPath, _fileProvider.Combine(src.Split("/").ToArray()));
+                            src = _fileProvider.Combine(_webHostEnvironment.WebRootPath, _fileProvider.Combine(src.Split("/").ToArray()));
                         else
                             src = _fileProvider.MapPath(path);
                         bundle.InputFiles.Add(src);
                     }
                     //output file
                     var outputFileName = GetBundleFileName(partsToBundle.Select(x => { return debugModel ? x.DebugSrc : x.Src; }).ToArray());
-                    bundle.OutputFileName = _fileProvider.Combine(_hostingEnvironment.WebRootPath, "bundles", outputFileName + ".css");
+                    bundle.OutputFileName = _fileProvider.Combine(_webHostEnvironment.WebRootPath, "bundles", outputFileName + ".css");
                     //save
                     var configFilePath = _fileProvider.MapPath($"/{outputFileName}.json");
                     bundle.FileName = configFilePath;
@@ -602,8 +613,12 @@ namespace Nop.Web.Framework.UI
                     //performance optimization. do not bundle and minify for each HTTP request
                     //we periodically re-check already bundles file
                     //so if we have minification enabled, it could take up to several minutes to see changes in updated resource files (or just reset the cache or restart the site)
-                    var cacheKey = $"Nop.minification.shouldrebuild.css-{outputFileName}";
-                    var shouldRebuild = _cacheManager.Get(cacheKey, () => true, RECHECK_BUNDLED_FILES_PERIOD);
+                    var cacheKey = new CacheKey($"Nop.minification.shouldrebuild.css-{outputFileName}")
+                    {
+                        CacheTime = _appSettings.CacheConfig.BundledFilesCacheTime
+                    };
+
+                    var shouldRebuild = _staticCacheManager.GetAsync(_staticCacheManager.PrepareKey(cacheKey), () => true).Result;
 
                     if (shouldRebuild)
                     {
@@ -613,10 +628,10 @@ namespace Nop.Web.Framework.UI
                             //BundleHandler.AddBundle(configFilePath, bundle);
 
                             //process
-                            _processor.Process(configFilePath, new List<Bundle> {bundle});
+                            _processor.Process(configFilePath, new List<Bundle> { bundle });
                         }
 
-                        _cacheManager.Set(cacheKey, false, RECHECK_BUNDLED_FILES_PERIOD);
+                        _staticCacheManager.SetAsync(cacheKey, false);
                     }
 
                     //render

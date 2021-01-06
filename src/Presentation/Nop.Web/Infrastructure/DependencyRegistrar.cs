@@ -2,7 +2,6 @@
 using Nop.Core.Configuration;
 using Nop.Core.Infrastructure;
 using Nop.Core.Infrastructure.DependencyManagement;
-using Nop.Services.Caching.CachingDefaults;
 using Nop.Web.Areas.Admin.Factories;
 using Nop.Web.Framework.Factories;
 using Nop.Web.Infrastructure.Installation;
@@ -19,8 +18,8 @@ namespace Nop.Web.Infrastructure
         /// </summary>
         /// <param name="builder">Container builder</param>
         /// <param name="typeFinder">Type finder</param>
-        /// <param name="config">Config</param>
-        public virtual void Register(ContainerBuilder builder, ITypeFinder typeFinder, NopConfig config)
+        /// <param name="appSettings">App settings</param>
+        public virtual void Register(ContainerBuilder builder, ITypeFinder typeFinder, AppSettings appSettings)
         {
             //installation localization service
             builder.RegisterType<InstallationLocalizationService>().As<IInstallationLocalizationService>().InstancePerLifetimeScope();
@@ -30,7 +29,6 @@ namespace Nop.Web.Infrastructure
             builder.RegisterType<DiscountSupportedModelFactory>().As<IDiscountSupportedModelFactory>().InstancePerLifetimeScope();
             builder.RegisterType<LocalizedModelFactory>().As<ILocalizedModelFactory>().InstancePerLifetimeScope();
             builder.RegisterType<StoreMappingSupportedModelFactory>().As<IStoreMappingSupportedModelFactory>().InstancePerLifetimeScope();
-            builder.RegisterType<CacheKeyFactory>().As<ICacheKeyFactory>().InstancePerLifetimeScope();
 
             //admin factories
             builder.RegisterType<BaseAdminModelFactory>().As<IBaseAdminModelFactory>().InstancePerLifetimeScope();
@@ -58,6 +56,7 @@ namespace Nop.Web.Infrastructure
             builder.RegisterType<ManufacturerModelFactory>().As<IManufacturerModelFactory>().InstancePerLifetimeScope();
             builder.RegisterType<MeasureModelFactory>().As<IMeasureModelFactory>().InstancePerLifetimeScope();
             builder.RegisterType<MessageTemplateModelFactory>().As<IMessageTemplateModelFactory>().InstancePerLifetimeScope();
+            builder.RegisterType<MultiFactorAuthenticationMethodModelFactory>().As<IMultiFactorAuthenticationMethodModelFactory>().InstancePerLifetimeScope();
             builder.RegisterType<NewsletterSubscriptionModelFactory>().As<INewsletterSubscriptionModelFactory>().InstancePerLifetimeScope();
             builder.RegisterType<NewsModelFactory>().As<INewsModelFactory>().InstancePerLifetimeScope();
             builder.RegisterType<OrderModelFactory>().As<IOrderModelFactory>().InstancePerLifetimeScope();
@@ -108,7 +107,7 @@ namespace Nop.Web.Infrastructure
             builder.RegisterType<Factories.TopicModelFactory>().As<Factories.ITopicModelFactory>().InstancePerLifetimeScope();
             builder.RegisterType<Factories.VendorModelFactory>().As<Factories.IVendorModelFactory>().InstancePerLifetimeScope();
             builder.RegisterType<Factories.WidgetModelFactory>().As<Factories.IWidgetModelFactory>().InstancePerLifetimeScope();
-        }
+;        }
 
         /// <summary>
         /// Gets order of this dependency registrar implementation

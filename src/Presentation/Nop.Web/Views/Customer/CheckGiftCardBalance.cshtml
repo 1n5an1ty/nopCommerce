@@ -7,7 +7,7 @@
 @inject ICustomerService customerService
 
 @{
-    var isRegisterCustomer = customerService.IsRegistered(workContext.CurrentCustomer);
+    var isRegisterCustomer = await customerService.IsRegisteredAsync(await workContext.GetCurrentCustomerAsync());
     Layout = isRegisterCustomer ? "_ColumnsTwo" : "_ColumnsOne";
 
     //title
@@ -59,23 +59,21 @@
                         <nop-required />
                         <span asp-validation-for="GiftCardCode"></span>
                     </div>
-                    <div class="captcha-box">
-                        <nop-captcha />
-                    </div>
+                    <nop-captcha />
                 </div>
-                <div class="buttons">
-                    <input type="submit" name="checkbalancegiftcard" id="checkbalancegiftcard" class="button-1 check-gift-card-balance-button" value="@T("CheckGiftCard.GiftCardCouponCode.Button")" />
-                    <script asp-location="Footer">
-                        $(document).ready(function () {
-                            $('#giftcardcouponcode').keydown(function (event) {
-                                if (event.keyCode == 13) {
-                                    $('#checkbalancegiftcard').click();
-                                    return false;
-                                }
-                            });
+            </div>
+            <div class="buttons">
+                <input type="submit" name="checkbalancegiftcard" id="checkbalancegiftcard" class="button-1 check-gift-card-balance-button" value="@T("CheckGiftCard.GiftCardCouponCode.Button")" />
+                <script asp-location="Footer">
+                    $(document).ready(function () {
+                        $('#giftcardcouponcode').keydown(function (event) {
+                            if (event.keyCode == 13) {
+                                $('#checkbalancegiftcard').click();
+                                return false;
+                            }
                         });
-                    </script>
-                </div>
+                    });
+                </script>
             </div>
         </form>
     </div>

@@ -6,7 +6,7 @@ namespace Nop.Web.Areas.Admin.Models.Settings
     /// <summary>
     /// Represents a security settings model
     /// </summary>
-    public partial class SecuritySettingsModel : BaseNopModel, ISettingsModel
+    public partial record SecuritySettingsModel : BaseNopModel, ISettingsModel
     {
         #region Properties
 
@@ -17,9 +17,6 @@ namespace Nop.Web.Areas.Admin.Models.Settings
 
         [NopResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.AdminAreaAllowedIpAddresses")]
         public string AdminAreaAllowedIpAddresses { get; set; }
-
-        [NopResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.ForceSslForAllPages")]
-        public bool ForceSslForAllPages { get; set; }
 
         [NopResourceDisplayName("Admin.Configuration.Settings.GeneralCommon.HoneypotEnabled")]
         public bool HoneypotEnabled { get; set; }
